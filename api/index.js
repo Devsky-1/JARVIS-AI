@@ -196,4 +196,95 @@ Your goal is to help, teach, guide and support the user.
       error: "JARVIS server error."
     });
   }
+}                  ]
+                },
+
+                contents: [
+                  {
+                    role: "user",
+                    parts: [
+                      {
+                        text: message
+                      }
+                    ]
+                  }
+                ],
+
+                generationConfig: {
+                  maxOutputTokens: 800
+                }
+              })
+            }
+          );
+
+          const data = await response.json();
+
+          // Success
+          if (response.ok) {
+            const reply =
+              data.candidates?.[0]?.content?.parts
+                ?.map((part) => part.text || "")
+                .join("")
+                .trim();
+
+            if (!reply) {
+              return res.status(502).json({
+                success: false,
+                error: "Gemini returned an empty response."
+              });
+            }
+
+            return res.status(200).json({
+              success: true,
+              model,
+              reply
+            });
+          }
+
+          lastError = {
+            model,
+            status: response.status,
+            data
+          };
+
+          // Retry only temporary errors
+          if (response.status === 429 || response.status === 500 || response.status === 503) {
+            const delay = 1000 * Math.pow(2, attempt);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue;
+          }
+
+          // Permanent error: don't keep trying
+          break;
+
+        } catch (error) {
+          lastError = {
+            model,
+            error: error.message
+          };
+
+          // Retry network/server errors
+          const delay = 1000 * Math.pow(2, attempt);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // Everything failed
+    console.error("All Gemini models failed:", lastError);
+
+    return res.status(503).json({
+      success: false,
+      error: "JARVIS is temporarily unavailable. Please try again shortly.",
+      details: lastError
+    });
+
+  } catch (error) {
+    console.error("JARVIS server error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: "JARVIS server error."
+    });
+  }
 }
